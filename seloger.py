@@ -4,6 +4,7 @@ import urllib.parse
 from selenium import webdriver
 import json
 import textwrap
+from notify_run import Notify
 import pandas as pd
 import re
 import os
@@ -170,13 +171,17 @@ def send_email(filename):
     server.quit()
 
 
+def _notify(filename):
+    notify = Notify()
+    notify.send(f'flat-hunt: new batch available ({filename})', f'https://cbzittoun.github.io/flat-paris/{filename}')
+
+
 def git(filename_html):
     print("push on github")
     with open("docs/index.md", 'w') as file:
         file.write("\n".join([f"* [{f}](https://cbzittoun.github.io/flat-paris/{f})" for f in sorted(os.listdir("docs"), reverse=True)][1:-2]))
 
     os.system(textwrap.dedent(f"""
-        cd {root}
         git add docs/*
         git commit -m "{filename_html}"
         git push -u origin master
@@ -186,6 +191,7 @@ def git(filename_html):
 if __name__ == '__main__':
     scrap()
     filename_html = generate_html()
-    send_email(filename_html)
     git(filename_html)
+    _notify(filename_html)
+
 
