@@ -1,8 +1,6 @@
-import requests
 from bs4 import BeautifulSoup
 import urllib.parse
 from selenium import webdriver
-import json
 import textwrap
 from notify_run import Notify
 import pandas as pd
@@ -10,28 +8,37 @@ import re
 import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
-from ftplib import FTP
+from pathlib import Path
+import platform
+import yaml
 
 
+platform_sys = platform.system().lower()
 
-pd.set_option('display.max_rows', 500)
+if platform_sys == 'linux':
+    from pyvirtualdisplay import Display
+    display = Display(visible=0, size=(1600, 1200))
+    display.start()
 
-cfg = dict(
-    projects='1',
-    types='1,2',
-    places='[{cp:75}]',
-    price='NaN/3200',
-    surface='60/NaN',
-    sort='d_dt_crea',
-    enterprise='0',
-    qsVersion='1.0',
-)
+    root = Path('/home/pi/repo/flat-paris')
+else:
+    root = Path('/Users/cam/PycharmProjects/flat_paris')
+
+fullpath_cfg = root / 'cfg.yml'
+fullpath_db = root / 'db.h5'
+fullpath_chromedriver = root / 'webdriver' / platform_sys / 'chromedriver'
+
+now = pd.Timestamp.now()
+now_str = f'{now:%Y%m%d.%H%M%S}'
+
+with open(fullpath_cfg) as f:
+    cfg = yaml.safe_load(f)
+git_pages = cfg['git']['pages']
 
 
-def url_search(cfg, page):
-    return 'https://www.seloger.com/list.htm?' + urllib.parse.urlencode({**cfg, 'LISTING-LISTpg': page})
+def url_search(page):
+    return 'https://www.seloger.com/list.htm?' + urllib.parse.urlencode({**cfg['search'], 'LISTING-LISTpg': page})
 
 
 def get_soup(driver, url):
@@ -40,21 +47,15 @@ def get_soup(driver, url):
     return BeautifulSoup(page, 'html.parser')
 
 
-root = "/Users/cam/PycharmProjects/flat_paris"
-filename_property_ = root + '/property_.h5'
-# property_=pd.DataFrame()
-
-
-def scrap():
-    now = pd.Timestamp.now()
-    with webdriver.Chrome(root + '/chromedriver') as driver:
+def _scrap():
+    with webdriver.Chrome(fullpath_chromedriver) as driver:
         page = 0
         updated_all = False
         while not updated_all:
             page += 1
             print(f"page {page}")
             print(f"======")
-            soup = get_soup(driver, url_search(cfg, page))
+            soup = get_soup(driver, url_search(page))
 
             url_property_ = soup.find_all('a', attrs={'name': 'classified-link'})
             url_property_ = [x['href'].split('?')[0] for x in url_property_]
@@ -62,9 +63,9 @@ def scrap():
                 break
 
             try:
-                property_ = pd.read_hdf(filename_property_)
+                db = pd.read_hdf(fullpath_db)
             except FileNotFoundError:
-                property_ = pd.DataFrame()
+                db = pd.DataFrame()
             updated_all = True
             for url in url_property_:
                 if 'bellesdemeures.com' in url:
@@ -72,8 +73,8 @@ def scrap():
                     continue
                 property_id = int(re.findall("(\d+)\.htm", url)[0])
                 print(f"{property_id}", end=" ")
-                already_in = (property_id == property_.property_id).any()
-                if not property_.empty and already_in:
+                already_in = (property_id == db.property_id).any()
+                if not db.empty and already_in:
                     print(f"exists", end=" >> ")
                 else:
                     print(f"new   ", end=" >> ")
@@ -97,27 +98,26 @@ def scrap():
                     info['orientation'] = re_orientation.group(1)
                 row = pd.Series(info).to_frame().T
                 if already_in:
-                    price_old = property_.loc[lambda x: x.property_id == property_id, 'prix'][0]
+                    price_old = db.loc[lambda x: x.property_id == property_id, 'prix'][0]
                     price_new = info['prix']
                     if price_new != price_old:
                         print(f"price changed ({price_old} -> {price_new}E), update")
-                        property_.loc[lambda x: x.property_id == property_id] = row
+                        db.loc[lambda x: x.property_id == property_id] = row
                     else:
                         print(f"price unchanged, skip")
                 else:
                     print(f"append")
-                    property_ = pd.concat([property_, row], axis=0, sort=True)
-            os.remove(filename_property_)
-            property_.to_hdf(filename_property_, 'df')
+                    db = pd.concat([db, row], axis=0, sort=True)
+            os.remove(fullpath_db)
+            db.to_hdf(fullpath_db, 'df')
 
 
-def generate_html():
-    stamp = f'{pd.Timestamp.now():%Y%m%d.%H%M%S}'
-    property_ = pd.read_hdf(filename_property_)
-    property_ = property_.sort_values(['captured', 'property_id'], ascending=False)
+def _html():
+    db = pd.read_hdf(fullpath_db)
+    db = db.sort_values(['captured', 'property_id'], ascending=False)
     html_ = []
-    for id_r, r in property_.iterrows():
-        if r.captured < property_.captured.max():
+    for id_r, r in db.iterrows():
+        if r.captured < db.captured.max():
             break
         k_desc_ = [
             f"<a href='{r.urlAnnonce}' target='_blank'>link</a>",
@@ -144,54 +144,50 @@ def generate_html():
         html_k += "<br>" + ''.join(html_photo_)
         html_.append(html_k)
     html = '<br><br>'.join(html_)
-    filename = stamp + '.htm'
-    with open(root + "/docs/" + filename, 'w') as f:
+    filename = now_str + '.htm'
+    with open(root / 'docs' / filename, 'w') as f:
         f.write(html)
     return filename
 
 
-def send_email(filename):
-    to = ['zittounescu@gmail.com']
+def _email(filename):
+    address = cfg['email']['address']
+    to = [address]
     print("send email")
     msg = MIMEMultipart()
-    msg['From'] = 'zittounescu@gmail.com'
+    msg['From'] = address
     msg['To'] = ', '.join(to)
     msg['Subject'] = f"flat-hunt: new batch available ({filename})"
-    # attachment = MIMEApplication(open(filename, "rb").read())
-    # attachment.add_header('Content-Disposition', 'attachment', filename=filename)
-    # msg.attach(attachment)
-    body = MIMEText(f"new batch available <a href='https://cbzittoun.github.io/flat-paris/{filename}'>here</a><br>history is <a href='https://cbzittoun.github.io/flat-paris'>here</a>", "html")
+    body = MIMEText(f"new batch available <a href='{git_pages}/{filename}'>here</a><br>history is <a href='{git_pages}'>here</a>", "html")
     msg.attach(body)
     server = smtplib.SMTP('smtp.gmail.com', 587)
     server.starttls()
-    with open(root + '/email.txt') as f:
-        pwd = f.read().strip('\n')
-    server.login("zittounescu@gmail.com", pwd)
-    server.sendmail('zittounescu@gmail.com', to, msg.as_string())
+    server.login(address, cfg['email']['password'])
+    server.sendmail(address, to, msg.as_string())
     server.quit()
 
 
-def _notify(filename):
-    notify = Notify()
-    notify.send(f'flat-hunt: new batch available ({filename})', f'https://cbzittoun.github.io/flat-paris/{filename}')
-
-
-def git(filename_html):
+def _git():
     print("push on github")
+
     with open("docs/index.md", 'w') as file:
-        file.write("\n".join([f"* [{f}](https://cbzittoun.github.io/flat-paris/{f})" for f in sorted(os.listdir("docs"), reverse=True)][1:-2]))
+        file.write("\n".join([f"* [{f}]({git_pages}/{f})" for f in sorted(os.listdir("docs"), reverse=True)][1:-2]))
 
     os.system(textwrap.dedent(f"""
         git add docs/*
-        git commit -m "{filename_html}"
+        git commit -m "{now_str}"
         git push -u origin master
     """).strip("\n "))
 
 
+def _notify(filename):
+    notify = Notify()
+    notify.endpoint = cfg['notify']['endpoint']
+    notify.send(f'flat-hunt: new batch available ({filename})', f'{git_pages}/{filename}')
+
+
 if __name__ == '__main__':
-    scrap()
-    filename_html = generate_html()
-    git(filename_html)
+    _scrap()
+    filename_html = _html()
+    _git()
     _notify(filename_html)
-
-
