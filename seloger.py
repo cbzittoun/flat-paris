@@ -157,7 +157,7 @@ def _email(filename):
     msg = MIMEMultipart()
     msg['From'] = address
     msg['To'] = ', '.join(to)
-    msg['Subject'] = f"flat-hunt: new batch available ({filename})"
+    msg['Subject'] = f"flat-hunt: {filename}"
     body = MIMEText(f"new batch available <a href='{git_pages}/{filename}'>here</a><br>history is <a href='{git_pages}'>here</a>", "html")
     msg.attach(body)
     server = smtplib.SMTP('smtp.gmail.com', 587)
@@ -192,4 +192,5 @@ if __name__ == '__main__':
     _scrap()
     filename_html = _html()
     _git()
+    _email(filename_html)
     _notify(filename_html)
