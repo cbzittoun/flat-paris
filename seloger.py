@@ -170,10 +170,11 @@ def _email(filename):
 def _git():
     print("push on github")
 
-    with open("docs/index.md", 'w') as file:
-        file.write("\n".join([f"* [{f}]({git_pages}/{f})" for f in sorted(os.listdir("docs"), reverse=True)][1:-2]))
+    with open(root / 'docs' / 'index.md', 'w') as file:
+        file.write("\n".join([f"* [{f}]({git_pages}/{f})" for f in sorted(os.listdir(root / 'docs'), reverse=True)][1:-2]))
 
     os.system(textwrap.dedent(f"""
+        cd {root}
         git add docs/*
         git commit -m "{now_str}"
         git push -u origin master
