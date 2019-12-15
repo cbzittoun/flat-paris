@@ -1,3 +1,4 @@
+* [20191215.105553.htm](https://cbzittoun.github.io/flat-paris/20191215.105553.htm)
 * [20191215.100901.htm](https://cbzittoun.github.io/flat-paris/20191215.100901.htm)
 * [20191214.180202.htm](https://cbzittoun.github.io/flat-paris/20191214.180202.htm)
 * [20191214.140139.htm](https://cbzittoun.github.io/flat-paris/20191214.140139.htm)
@@ -31,5 +32,3 @@
 * [20191206.100308.htm](https://cbzittoun.github.io/flat-paris/20191206.100308.htm)
 * [20191205.180222.htm](https://cbzittoun.github.io/flat-paris/20191205.180222.htm)
 * [20191205.140325.htm](https://cbzittoun.github.io/flat-paris/20191205.140325.htm)
-* [20191205.100200.htm](https://cbzittoun.github.io/flat-paris/20191205.100200.htm)
-* [20191204.235450.htm](https://cbzittoun.github.io/flat-paris/20191204.235450.htm)
