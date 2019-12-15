@@ -1,3 +1,4 @@
+* [20191215.181603.htm](https://cbzittoun.github.io/flat-paris/20191215.181603.htm)
 * [20191215.180003.htm](https://cbzittoun.github.io/flat-paris/20191215.180003.htm)
 * [20191215.172904.htm](https://cbzittoun.github.io/flat-paris/20191215.172904.htm)
 * [20191215.172304.htm](https://cbzittoun.github.io/flat-paris/20191215.172304.htm)
