@@ -175,6 +175,7 @@ def _git():
 
     os.system(textwrap.dedent(f"""
         cd {root}
+        git add db.h5
         git add docs/*
         git commit -m "{now_str}"
         git push -u origin master
