@@ -29,7 +29,7 @@ fullpath_cfg = root / 'cfg.yml'
 fullpath_db = root / 'db.h5'
 fullpath_chromedriver = root / 'webdriver' / platform_sys / 'chromedriver'
 
-now = pd.Timestamp.now()
+now = pd.Timestamp.now().replace(microsecond=0)
 now_str = f'{now:%Y%m%d.%H%M%S}'
 
 with open(fullpath_cfg) as f:
@@ -108,8 +108,8 @@ def _scrap():
                 else:
                     print(f"append")
                     db = pd.concat([db, row], axis=0, sort=True)
-            os.remove(fullpath_db)
-            db.to_hdf(fullpath_db, 'df')
+        os.remove(fullpath_db)
+        db.to_hdf(fullpath_db, 'df')
 
 
 def _html():
@@ -117,7 +117,8 @@ def _html():
     db = db.sort_values(['captured', 'property_id'], ascending=False)
     html_ = []
     for id_r, r in db.iterrows():
-        if r.captured < db.captured.max():
+        # if r.captured < db.captured.max():
+        if r.captured < max_t:
             break
         k_desc_ = [
             f"<a href='{r.urlAnnonce}' target='_blank'>link</a>",
