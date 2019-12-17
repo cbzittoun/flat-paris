@@ -11,6 +11,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 import platform
+import requests
 import yaml
 
 
@@ -47,6 +48,18 @@ def get_soup(driver, url):
     return BeautifulSoup(page, 'html.parser')
 
 
+def _gdist(latitude, longitude):
+    cfg_gdist = cfg['gdist']
+    origins = f'{latitude},{longitude}'
+    destination_ = cfg_gdist['destination_']
+    destinations = '|'.join(v[1] for v in destination_.values())
+    key = cfg_gdist['api_key']
+    url = f'https://maps.googleapis.com/maps/api/distancematrix/json?mode=transit&departure_time=1576483200&units=metric&origins={origins}&destinations={destinations}&key={key}'
+    response = requests.get(url)
+    durations = [dest['duration']['value'] / 60 for dest in response.json()['rows'][0]['elements']]
+    return dict(zip(destination_.keys(), durations))
+
+
 def _scrap():
     with webdriver.Chrome(fullpath_chromedriver) as driver:
         page = 0
@@ -61,6 +74,8 @@ def _scrap():
             url_property_ = [x['href'].split('?')[0] for x in url_property_]
             if not url_property_:
                 break
+
+            url_property_ = ['https://www.seloger.com/annonces/locations/appartement/paris-2eme-75/sentier-bonne-nouvelle/154454415.htm#?bd=Contact_EmConfirm_ann']
 
             try:
                 db = pd.read_hdf(fullpath_db)
@@ -96,12 +111,18 @@ def _scrap():
                 re_orientation = re.search("Orientation (.+)\n", soup.text)
                 if re_orientation:
                     info['orientation'] = re_orientation.group(1)
+
+                if info['mapCoordonneesLatitude'] != '':
+                    info['gdist'] = _gdist(info['mapCoordonneesLatitude'], info['mapCoordonneesLongitude'])
+
                 row = pd.Series(info).to_frame().T
+
                 if already_in:
                     price_old = db.loc[lambda x: x.property_id == property_id, 'prix'][0]
                     price_new = info['prix']
                     if price_new != price_old:
                         print(f"price changed ({price_old} -> {price_new}E), update")
+                        row['price_old'] = price_old
                         db.loc[lambda x: x.property_id == property_id] = row
                     else:
                         print(f"price unchanged, skip")
@@ -115,10 +136,13 @@ def _scrap():
 def _html():
     db = pd.read_hdf(fullpath_db)
     db = db.sort_values(['captured', 'property_id'], ascending=False)
+
+    gdist_w = pd.Series({k: v[0] for k, v in cfg['gdist']['destination_'].items()})
+    gdist_w /= gdist_w.sum()
+
     html_ = []
     for id_r, r in db.iterrows():
-        # if r.captured < db.captured.max():
-        if r.captured < max_t:
+        if r.captured < db.captured.max():
             break
         k_desc_ = [
             f"<a href='{r.urlAnnonce}' target='_blank'>link</a>",
@@ -137,6 +161,12 @@ def _html():
                     k_desc_.append(f"+{k}")
         if not pd.isnull(r.orientation):
             k_desc_.append(r.orientation)
+
+        if not pd.isnull(r.gdist):
+            time_str = ', '.join([f"{k}={v:.0f}" for k, v in r.gdist.items()])
+            gtime = (pd.Series(r.gdist) * gdist_w).sum()
+            k_desc_.append(f"gtime:{gtime:.0f}min ({time_str})")
+
         html_k_desc = ("&thinsp;" * 5).join(k_desc_)
         html_k = f"<h2>{r.ville} - {r.nomQuartier}<br>{html_k_desc}</h2>"
         html_photo_ = []
