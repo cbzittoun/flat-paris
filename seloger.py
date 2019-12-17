@@ -48,13 +48,13 @@ def get_soup(driver, url):
 
 
 def _scrap():
+    print("scrap")
     with webdriver.Chrome(fullpath_chromedriver) as driver:
         page = 0
         updated_all = False
         while not updated_all:
             page += 1
             print(f"page {page}")
-            print(f"======")
             soup = get_soup(driver, url_search(page))
 
             url_property_ = soup.find_all('a', attrs={'name': 'classified-link'})
@@ -113,6 +113,7 @@ def _scrap():
 
 
 def _html():
+    print("generate html")
     db = pd.read_hdf(fullpath_db)
     db = db.sort_values(['captured', 'property_id'], ascending=False)
     html_ = []
@@ -151,9 +152,9 @@ def _html():
 
 
 def _email(filename):
+    print("send email")
     address = cfg['email']['address']
     to = [address]
-    print("send email")
     msg = MIMEMultipart()
     msg['From'] = address
     msg['To'] = ', '.join(to)
@@ -168,7 +169,7 @@ def _email(filename):
 
 
 def _git():
-    print("push on github")
+    print("push to github")
 
     with open(root / 'docs' / 'index.md', 'w') as file:
         file.write("\n".join([f"* [{f}]({git_pages}/{f})" for f in sorted(os.listdir(root / 'docs'), reverse=True)][1:-2]))
@@ -183,6 +184,7 @@ def _git():
 
 
 def _notify(filename):
+    print("notify")
     notify = Notify()
     notify.endpoint = cfg['notify']['endpoint']
     notify.send(f'flat-hunt: new batch available ({filename})', f'{git_pages}/{filename}')
