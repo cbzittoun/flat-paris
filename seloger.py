@@ -140,6 +140,7 @@ def _html():
 
     gdist_w = pd.Series({k: v[0] for k, v in cfg['gdist']['destination_'].items()})
     gdist_w /= gdist_w.sum()
+    print(gdist_w)
 
     html_ = []
     for id_r, r in db.iterrows():
@@ -165,7 +166,10 @@ def _html():
 
         if not pd.isnull(r.gdist):
             time_str = ', '.join([f"{k}={v:.0f}" for k, v in r.gdist.items()])
+            print(r.gdist)
+            print(gdist_w)
             gtime = (pd.Series(r.gdist) * gdist_w).sum()
+            print(gtime)
             k_desc_.append(f"gtime:{gtime:.0f}min ({time_str})")
 
         html_k_desc = ("&thinsp;" * 5).join(k_desc_)
