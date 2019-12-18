@@ -226,8 +226,8 @@ def _notify(filename):
 
 
 if __name__ == '__main__':
-    _scrap()
+    #_scrap()
     filename_html = _html()
     _git()
-    _email(filename_html)
-    _notify(filename_html)
+    #_email(filename_html)
+    #_notify(filename_html)
