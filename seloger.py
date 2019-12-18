@@ -75,8 +75,6 @@ def _scrap():
             if not url_property_:
                 break
 
-            url_property_ = ['https://www.seloger.com/annonces/locations/appartement/paris-2eme-75/sentier-bonne-nouvelle/154454415.htm#?bd=Contact_EmConfirm_ann']
-
             try:
                 db = pd.read_hdf(fullpath_db)
             except FileNotFoundError:
