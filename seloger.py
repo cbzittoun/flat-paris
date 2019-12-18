@@ -62,6 +62,11 @@ def _gdist(latitude, longitude):
 
 def _scrap():
     print("scrap")
+    try:
+        db = pd.read_hdf(fullpath_db)
+    except FileNotFoundError:
+        db = pd.DataFrame()
+
     with webdriver.Chrome(fullpath_chromedriver) as driver:
         page = 0
         updated_all = False
@@ -75,10 +80,6 @@ def _scrap():
             if not url_property_:
                 break
 
-            try:
-                db = pd.read_hdf(fullpath_db)
-            except FileNotFoundError:
-                db = pd.DataFrame()
             updated_all = True
             for url in url_property_:
                 if 'bellesdemeures.com' in url:
@@ -88,9 +89,9 @@ def _scrap():
                 print(f"{property_id}", end=" ")
                 already_in = (property_id == db.property_id).any()
                 if not db.empty and already_in:
-                    print(f"exists", end=" >> ")
+                    print(f"exists", end=" => ")
                 else:
-                    print(f"new   ", end=" >> ")
+                    print(f"new   ", end=" => ")
                     updated_all = False
                 soup = get_soup(driver, url)
                 info = dict(re.findall("Object\.defineProperty\( ConfigDetail, '(\w+)', {\n          value: [\"'](.*)[\"']", soup.text))
@@ -119,16 +120,16 @@ def _scrap():
                     price_old = db.loc[lambda x: x.property_id == property_id, 'prix'][0]
                     price_new = info['prix']
                     if price_new != price_old:
-                        print(f"price changed ({price_old} -> {price_new}E), update")
+                        print(f"price move => update ({price_old} -> {price_new}E)")
                         row['price_old'] = price_old
                         db.loc[lambda x: x.property_id == property_id] = row
                     else:
-                        print(f"price unchanged, skip")
+                        print(f"price unch => skip")
                 else:
                     print(f"append")
                     db = pd.concat([db, row], axis=0, sort=True)
-        os.remove(fullpath_db)
-        db.to_hdf(fullpath_db, 'df')
+    os.remove(fullpath_db)
+    db.to_hdf(fullpath_db, 'df')
 
 
 def _html():
@@ -138,7 +139,6 @@ def _html():
 
     gdist_w = pd.Series({k: v[0] for k, v in cfg['gdist']['destination_'].items()})
     gdist_w /= gdist_w.sum()
-    print(gdist_w)
 
     html_ = []
     for id_r, r in db.iterrows():
@@ -164,10 +164,7 @@ def _html():
 
         if not pd.isnull(r.gdist):
             time_str = ', '.join([f"{k}={v:.0f}" for k, v in r.gdist.items()])
-            print(r.gdist)
-            print(gdist_w)
             gtime = (pd.Series(r.gdist) * gdist_w).sum()
-            print(gtime)
             k_desc_.append(f"gtime:{gtime:.0f}min ({time_str})")
 
         html_k_desc = ("&thinsp;" * 5).join(k_desc_)
