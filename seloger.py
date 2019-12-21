@@ -137,8 +137,10 @@ def _html():
     db = pd.read_hdf(fullpath_db)
     db = db.sort_values(['captured', 'property_id'], ascending=False)
 
-    gdist_w = pd.Series({k: v[0] for k, v in cfg['gdist']['destination_'].items()})
+    cfg_dest = cfg['gdist']['destination_']
+    gdist_w = pd.Series({k: v[0] for k, v in cfg_dest.items()})
     gdist_w /= gdist_w.sum()
+    gdist_url_ = {k: f'https://www.google.co.uk/maps/dir/{{}}/{v[1]}/data=!4m2!4m1!3e3' for k, v in cfg_dest.items()}
 
     html_ = []
     for id_r, r in db.iterrows():
@@ -163,7 +165,8 @@ def _html():
             k_desc_.append(r.orientation)
 
         if not pd.isnull(r.gdist):
-            time_str = ', '.join([f"{k}={v:.0f}" for k, v in r.gdist.items()])
+            coord_str = f'{r.mapCoordonneesLatitude},{r.mapCoordonneesLongitude}'
+            time_str = ', '.join([f"{k}=<a href='{gdist_url_[k].format(coord_str)}' target='_blank'>{v:.0f}</a>" for k, v in r.gdist.items()])
             gtime = (pd.Series(r.gdist) * gdist_w).sum()
             k_desc_.append(f"gtime:{gtime:.0f}min ({time_str})")
 
