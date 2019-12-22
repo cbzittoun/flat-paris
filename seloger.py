@@ -3,6 +3,7 @@ import urllib.parse
 from selenium import webdriver
 import textwrap
 from notify_run import Notify
+import numpy as np
 import pandas as pd
 import re
 import os
@@ -56,7 +57,7 @@ def _gdist(latitude, longitude):
     key = cfg_gdist['api_key']
     url = f'https://maps.googleapis.com/maps/api/distancematrix/json?mode=transit&departure_time=1576483200&units=metric&origins={origins}&destinations={destinations}&key={key}'
     response = requests.get(url)
-    durations = [dest['duration']['value'] / 60 for dest in response.json()['rows'][0]['elements']]
+    durations = [dest.get('duration', dict(value=np.nan))['value'] / 60 for dest in response.json()['rows'][0]['elements']]
     return dict(zip(destination_.keys(), durations))
 
 
@@ -139,7 +140,6 @@ def _html():
 
     cfg_dest = cfg['gdist']['destination_']
     gdist_w = pd.Series({k: v[0] for k, v in cfg_dest.items()})
-    gdist_w /= gdist_w.sum()
     gdist_url_ = {k: f'https://www.google.co.uk/maps/dir/{{}}/{v[1]}/data=!4m2!4m1!3e3' for k, v in cfg_dest.items()}
 
     html_ = []
@@ -167,7 +167,8 @@ def _html():
         if not pd.isnull(r.gdist):
             coord_str = f'{r.mapCoordonneesLatitude},{r.mapCoordonneesLongitude}'
             time_str = ', '.join([f"{k}=<a href='{gdist_url_[k].format(coord_str)}' target='_blank'>{v:.0f}</a>" for k, v in r.gdist.items()])
-            gtime = (pd.Series(r.gdist) * gdist_w).sum()
+            gtime_s = pd.Series(r.gdist)
+            gtime = (gtime_s * gdist_w).sum() / gdist_w.mask(gtime_s.isna()).sum()
             k_desc_.append(f"gtime:{gtime:.0f}min ({time_str})")
 
         html_k_desc = ("&thinsp;" * 5).join(k_desc_)
