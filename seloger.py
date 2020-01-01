@@ -14,6 +14,7 @@ from pathlib import Path
 import platform
 import requests
 import yaml
+import json
 
 
 platform_sys = platform.system().lower()
@@ -55,7 +56,7 @@ def _gdist(latitude, longitude):
     destination_ = cfg_gdist['destination_']
     destinations = '|'.join(v[1] for v in destination_.values())
     key = cfg_gdist['api_key']
-    url = f'https://maps.googleapis.com/maps/api/distancematrix/json?mode=transit&departure_time=1576483200&units=metric&origins={origins}&destinations={destinations}&key={key}'
+    url = f'https://maps.googleapis.com/maps/api/distancematrix/json?mode=transit&departure_time=1581321600&units=metric&origins={origins}&destinations={destinations}&key={key}'
     response = requests.get(url)
     durations = [dest.get('duration', dict(value=np.nan))['value'] / 60 for dest in response.json()['rows'][0]['elements']]
     return dict(zip(destination_.keys(), durations))
@@ -131,6 +132,35 @@ def _scrap():
                     db = pd.concat([db, row], axis=0, sort=True)
     os.remove(fullpath_db)
     db.to_hdf(fullpath_db, 'df')
+
+
+def _parse_pap(soup):
+    o = dict()
+    o['captured'] = now
+    o['urlAnnonce'] = soup.select('meta[property="og:url"]')[0].attrs['content']
+    o['prix'] = soup.select('span[class="item-price"]')[0].text[:-2]
+    title = soup.select('title')[0].text
+    location, surface, null, null = title.split(' - ')
+    o['surface'] = surface[:-3]
+    o['ville'] = location.split('m² ')[1].split(' (')[0]
+    o['nomQuartier'] = ''
+    desc = soup.select('div[class*="item-description"] > div > p')[0].text
+    o['plus'] = {
+        'Meublé': 'meublée' in location,
+        'Balcon': bool(re.search('[bB]alcon', desc)),
+        'Terrasse': bool(re.search('[tT]errasse', desc)),
+    }
+    o['url_photo_'] = [img.attrs['src'] for img in soup.select('div[class*="owl-item"] > div > a > img')]
+    o['mapCoordonneesLatitude'], o['mapCoordonneesLongitude'] = json.loads(soup.select('div[id="carte_mappy"]')[0].attrs['data-mappy'])['center']
+    if o['mapCoordonneesLatitude'] != '':
+        o['gdist'] = _gdist(o['mapCoordonneesLatitude'], o['mapCoordonneesLongitude'])
+    o['nbPieces'] = soup.select('ul[class*="item-tags"] > li > strong')[0].text.split(' ')[0]
+    return o
+    # TODO: [ ] nbChambres
+    # TODO: [ ] etage
+    # TODO: [ ] lift
+    # TODO: [ ] surfaceT
+    # TODO: [ ] available
 
 
 def _html():
