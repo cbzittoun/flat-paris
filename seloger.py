@@ -79,15 +79,16 @@ def _scrap():
 
             url_property_ = soup.find_all('a', attrs={'name': 'classified-link'})
             url_property_ = [x['href'].split('?')[0] for x in url_property_]
+
             if not url_property_:
                 break
 
             updated_all = True
             for url in url_property_:
+                property_id = int(re.findall("/(\d+)[\./]", url)[0])
                 if 'bellesdemeures.com' in url:
-                    print(f"skip bellesdemeures.com")
+                    print(f"{property_id} skip bellesdemeures.com")
                     continue
-                property_id = int(re.findall("(\d+)\.htm", url)[0])
                 print(f"{property_id}", end=" ")
                 already_in = (property_id == db.property_id).any()
                 if not db.empty and already_in:
