@@ -349,7 +349,7 @@ def _git():
     print("push to github")
 
     with open(root / 'docs' / 'index.md', 'w') as file:
-        file.write("\n".join([f"* [{f}]({git_pages}/{f})" for f in sorted(os.listdir(root / 'docs'), reverse=True)][1:-2]))
+        file.write("\n".join([f"* [{f}]({git_pages}/{f})" for f in sorted(os.listdir(root / 'docs'), reverse=True)][2:-2]))
 
     os.system(textwrap.dedent(f"""
         cd {root}
