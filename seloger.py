@@ -123,7 +123,7 @@ def _scrap_seloger():
         updated_all = False
         while not updated_all:
             page += 1
-            if page > 10:
+            if page > 5:
                 break
             soup = get_soup(driver, url_search_seloger(page))
 
