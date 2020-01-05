@@ -62,6 +62,56 @@ def _gdist(latitude, longitude):
     return dict(zip(destination_.keys(), durations))
 
 
+def _parse_seloger(soup):
+    info = dict(re.findall("Object\.defineProperty\( ConfigDetail, '(\w+)', {\n          value: [\"'](.*)[\"']", soup.text))
+    url_photo_ = soup.select('div[class*="carrousel_slide"]')
+    url_photo_ = [re.findall('(//[^"]+\.jpg)', str(x)) for x in url_photo_]
+    url_photo_ = ['http:' + x[0] for x in url_photo_ if x]
+    url_photo_ = list(set(url_photo_))
+    info['url_photo_'] = url_photo_
+    info['property_id'] = int(info['idAnnonce'])
+    info['captured'] = now
+    date_available_ = re.findall("Disponibilité : (\d{2}\/\d{2}\/\d{4})", soup.text)
+    if date_available_:
+        info['available'] = pd.to_datetime(date_available_[0], format="%d/%m/%Y")
+    info['lift'] = bool(re.search('Ascenseur', soup.text))
+    info['plus'] = {p: bool(re.search(p, soup.text)) for p in ['Balcon', 'Terrasse', 'Meublé']}
+    re_orientation = re.search("Orientation (.+)\n", soup.text)
+    if re_orientation:
+        info['orientation'] = re_orientation.group(1)
+
+    if info['mapCoordonneesLatitude'] != '':
+        info['gdist'] = _gdist(info['mapCoordonneesLatitude'], info['mapCoordonneesLongitude'])
+
+    return info
+
+
+def _parse_bellesdemeures(soup):
+    o = dict()
+    o['captured'] = now
+    o['urlAnnonce'] = soup.select('link[rel="alternate"][hreflang="fr"]')[0].attrs['data-url']
+    null, null, price = soup.select("head > title")[0].text.split(', ')
+    o['prix'] = price.replace(' euro', '')
+    nb_room, nb_bedroom, surface = [x.text.strip('\n •') for x in soup.select('div[class="annonceSpecs"] > ul > li')]
+    o['surface'] = surface
+    o['surfaceT'] = surface.replace(' M²', '')
+    o['nbPieces'] = nb_room.split(' ')[0]
+    o['nbChambres'] = nb_bedroom.split(' ')[0]
+    o['ville'] = soup.select('span[class="js_locality"]')[0].text
+    o['nomQuartier'] = ''
+    plus = soup.select('ul[class="detailInfosList3Cols"]')[0].text
+    o['etage'] = re.search('étage (\d)+', plus)[1]
+    desc = soup.select('ul[class="detailInfosList3Cols"]')[1].text
+    o['lift'] = bool(re.search('Ascenseur', desc))
+    o['plus'] = {p: bool(re.search(p, desc)) for p in ['Balcon', 'Terrasse', 'Meublé']}
+    o['url_photo_'] = [x.attrs['data-src'] for x in soup.select('ul[class="carouselList"] > li')[:-1]]
+    map = soup.select('div[id="detailMap"]')[0].attrs
+    o['mapCoordonneesLatitude'], o['mapCoordonneesLongitude'] = map['data-lat'], map['data-lng']
+    if o['mapCoordonneesLatitude'] != '':
+        o['gdist'] = _gdist(o['mapCoordonneesLatitude'], o['mapCoordonneesLongitude'])
+    return o
+
+
 def _scrap():
     print("scrap")
     try:
@@ -79,43 +129,28 @@ def _scrap():
 
             url_property_ = soup.find_all('a', attrs={'name': 'classified-link'})
             url_property_ = [x['href'].split('?')[0] for x in url_property_]
-
             if not url_property_:
                 break
 
             updated_all = True
             for url in url_property_:
                 property_id = int(re.findall("/(\d+)[\./]", url)[0])
-                if 'bellesdemeures.com' in url:
-                    print(f"{property_id} skip bellesdemeures.com")
-                    continue
                 print(f"{property_id}", end=" ")
+
                 already_in = (property_id == db.property_id).any()
                 if not db.empty and already_in:
                     print(f"exists", end=" => ")
                 else:
                     print(f"new   ", end=" => ")
                     updated_all = False
-                soup = get_soup(driver, url)
-                info = dict(re.findall("Object\.defineProperty\( ConfigDetail, '(\w+)', {\n          value: [\"'](.*)[\"']", soup.text))
-                url_photo_ = soup.select('div[class*="carrousel_slide"]')
-                url_photo_ = [re.findall('(//[^"]+\.jpg)', str(x)) for x in url_photo_]
-                url_photo_ = ['http:' + x[0] for x in url_photo_ if x]
-                url_photo_ = list(set(url_photo_))
-                info['url_photo_'] = url_photo_
-                info['property_id'] = int(info['idAnnonce'])
-                info['captured'] = now
-                date_available_ = re.findall("Disponibilité : (\d{2}\/\d{2}\/\d{4})", soup.text)
-                if date_available_:
-                    info['available'] = pd.to_datetime(date_available_[0], format="%d/%m/%Y")
-                info['lift'] = bool(re.search('Ascenseur', soup.text))
-                info['plus'] = {p: bool(re.search(p, soup.text)) for p in ['Balcon', 'Terrasse', 'Meublé']}
-                re_orientation = re.search("Orientation (.+)\n", soup.text)
-                if re_orientation:
-                    info['orientation'] = re_orientation.group(1)
 
-                if info['mapCoordonneesLatitude'] != '':
-                    info['gdist'] = _gdist(info['mapCoordonneesLatitude'], info['mapCoordonneesLongitude'])
+                soup = get_soup(driver, url)
+
+                if 'bellesdemeures.com' in url:
+                    print('bellesdemeures.com')
+                    info = _parse_bellesdemeures(soup)
+                else:
+                    info = _parse_seloger(soup)
 
                 row = pd.Series(info).to_frame().T
 
@@ -124,6 +159,8 @@ def _scrap():
                     price_new = info['prix']
                     if price_new != price_old:
                         print(f"price move => update ({price_old} -> {price_new}E)")
+                        updated_all = False
+
                         row['price_old'] = price_old
                         db.loc[lambda x: x.property_id == property_id] = row
                     else:
@@ -260,4 +297,4 @@ if __name__ == '__main__':
     filename_html = _html()
     _git()
     _email(filename_html)
-    _notify(filename_html)
+    # _notify(filename_html)
