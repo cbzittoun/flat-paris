@@ -1,3 +1,5 @@
+* [assets](https://cbzittoun.github.io/flat-paris/assets)
+* [20200105.212403.htm](https://cbzittoun.github.io/flat-paris/20200105.212403.htm)
 * [20200105.180003.htm](https://cbzittoun.github.io/flat-paris/20200105.180003.htm)
 * [20200105.140003.htm](https://cbzittoun.github.io/flat-paris/20200105.140003.htm)
 * [20200105.130003.htm](https://cbzittoun.github.io/flat-paris/20200105.130003.htm)
