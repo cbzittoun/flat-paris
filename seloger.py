@@ -40,10 +40,6 @@ with open(fullpath_cfg) as f:
 git_pages = cfg['git']['pages']
 
 
-def url_search(page):
-    return 'https://www.seloger.com/list.htm?' + urllib.parse.urlencode({**cfg['search'], 'LISTING-LISTpg': page})
-
-
 def get_soup(driver, url):
     driver.get(url)
     page = driver.page_source
@@ -62,6 +58,10 @@ def _gdist(latitude, longitude):
     return dict(zip(destination_.keys(), durations))
 
 
+def url_search_seloger(page):
+    return 'https://www.seloger.com/list.htm?' + urllib.parse.urlencode({**cfg['search']['seloger'], 'LISTING-LISTpg': page})
+
+
 def _parse_seloger(soup):
     info = dict(re.findall("Object\.defineProperty\( ConfigDetail, '(\w+)', {\n          value: [\"'](.*)[\"']", soup.text))
     url_photo_ = soup.select('div[class*="carrousel_slide"]')
@@ -69,7 +69,6 @@ def _parse_seloger(soup):
     url_photo_ = ['http:' + x[0] for x in url_photo_ if x]
     url_photo_ = list(set(url_photo_))
     info['url_photo_'] = url_photo_
-    info['property_id'] = int(info['idAnnonce'])
     info['captured'] = now
     date_available_ = re.findall("Disponibilité : (\d{2}\/\d{2}\/\d{4})", soup.text)
     if date_available_:
@@ -112,8 +111,8 @@ def _parse_bellesdemeures(soup):
     return o
 
 
-def _scrap():
-    print("scrap")
+def _scrap_seloger():
+    print("scrap seloger.com, bellesdemeures.com")
     try:
         db = pd.read_hdf(fullpath_db)
     except FileNotFoundError:
@@ -124,13 +123,16 @@ def _scrap():
         updated_all = False
         while not updated_all:
             page += 1
-            print(f"page {page}")
-            soup = get_soup(driver, url_search(page))
+            if page > 10:
+                break
+            soup = get_soup(driver, url_search_seloger(page))
 
             url_property_ = soup.find_all('a', attrs={'name': 'classified-link'})
             url_property_ = [x['href'].split('?')[0] for x in url_property_]
             if not url_property_:
                 break
+
+            print(f"page {page}")
 
             updated_all = True
             for url in url_property_:
@@ -151,6 +153,105 @@ def _scrap():
                     info = _parse_bellesdemeures(soup)
                 else:
                     info = _parse_seloger(soup)
+                info['property_id'] = property_id
+
+                row = pd.Series(info).to_frame().T
+
+                if already_in:
+                    price_old = db.loc[lambda x: x.property_id == property_id, 'prix'][0]
+                    price_new = info['prix']
+                    if price_new != price_old:
+                        print(f"price move => update ({price_old} -> {price_new}E)")
+                        updated_all = False
+
+                        row['price_old'] = price_old
+                        db.loc[db.property_id == property_id] = row
+                    else:
+                        print(f"price unch => skip")
+                else:
+                    print(f"append")
+                    db = pd.concat([db, row], axis=0, sort=True)
+    os.remove(fullpath_db)
+    db.to_hdf(fullpath_db, 'df')
+
+
+def url_search_pap(page):
+    o = 'https://www.pap.fr/annonce/{projects}-{type}-{places}-g439-a-partir-du-{mb_room}-pieces-jusqu-a-{price}-euros-a-partir-de-{surface}-m2'
+    o = o.format(**cfg['search']['pap'])
+    if page > 1:
+        o += f'-{page}'
+    return o
+
+
+def _parse_pap(soup):
+    o = dict()
+    o['captured'] = now
+    o['urlAnnonce'] = soup.select('meta[property="og:url"]')[0].attrs['content']
+    o['prix'] = soup.select('span[class="item-price"]')[0].text[:-2].replace('.', '')
+    title = soup.select('title')[0].text
+    location, surface, null, null = title.split(' - ')
+    o['surface'] = surface
+    o['surfaceT'] = surface[:-3]
+    o['ville'] = location.split('m² ')[1].split(' (')[0]
+    o['nomQuartier'] = ''
+    desc = soup.select('div[class*="item-description"] > div > p')[0].text
+    o['plus'] = {
+        'Meublé': 'meublée' in location,
+        'Balcon': bool(re.search('[bB]alcon', desc)),
+        'Terrasse': bool(re.search('[tT]errasse', desc)),
+    }
+    o['url_photo_'] = [img.attrs['src'] for img in soup.select('div[class*="owl-item"] > div > a > img')]
+    o['mapCoordonneesLatitude'], o['mapCoordonneesLongitude'] = json.loads(soup.select('div[id="carte_mappy"]')[0].attrs['data-mappy'])['center']
+    if o['mapCoordonneesLatitude'] != '':
+        o['gdist'] = _gdist(o['mapCoordonneesLatitude'], o['mapCoordonneesLongitude'])
+    nb_room, nb_bedroom, null = soup.select('ul[class*="item-tags"] > li > strong')
+    o['nbPieces'] = nb_room.text.split(' ')[0]
+    o['nbChambres'] = nb_bedroom.text.split(' ')[0]
+    return o
+    # TODO: [ ] etage
+    # TODO: [ ] lift
+    # TODO: [ ] available
+
+
+def _scrap_pap():
+    print("scrap pap.fr")
+    try:
+        db = pd.read_hdf(fullpath_db)
+    except FileNotFoundError:
+        db = pd.DataFrame()
+
+    with webdriver.Chrome(fullpath_chromedriver) as driver:
+        page = 0
+        updated_all = False
+        while not updated_all:
+            page += 1
+            soup = get_soup(driver, url_search_pap(page))
+            url_search_introspect = soup.select('meta[property="og:url"]')[0].attrs['content']
+            if (page > 1) and not url_search_introspect.endswith(f'-{page}'):
+                break
+
+            url_property_ = soup.select('div[class="search-list-item"] > div[class="col-left"] > a')
+            url_property_ = ['https://www.pap.fr' + x.attrs['href'] for x in url_property_]
+            if not url_property_:
+                break
+
+            print(f"page {page}")
+
+            updated_all = True
+            for url in url_property_:
+                property_id = int(re.search("-r(\d+)", url)[1]) * 1000
+                print(f"{property_id}", end=" ")
+
+                already_in = (property_id == db.property_id).any()
+                if not db.empty and already_in:
+                    print(f"exists", end=" => ")
+                else:
+                    print(f"new   ", end=" => ")
+                    updated_all = False
+
+                soup = get_soup(driver, url)
+                info = _parse_pap(soup)
+                info['property_id'] = property_id
 
                 row = pd.Series(info).to_frame().T
 
@@ -172,35 +273,6 @@ def _scrap():
     db.to_hdf(fullpath_db, 'df')
 
 
-def _parse_pap(soup):
-    o = dict()
-    o['captured'] = now
-    o['urlAnnonce'] = soup.select('meta[property="og:url"]')[0].attrs['content']
-    o['prix'] = soup.select('span[class="item-price"]')[0].text[:-2]
-    title = soup.select('title')[0].text
-    location, surface, null, null = title.split(' - ')
-    o['surface'] = surface[:-3]
-    o['ville'] = location.split('m² ')[1].split(' (')[0]
-    o['nomQuartier'] = ''
-    desc = soup.select('div[class*="item-description"] > div > p')[0].text
-    o['plus'] = {
-        'Meublé': 'meublée' in location,
-        'Balcon': bool(re.search('[bB]alcon', desc)),
-        'Terrasse': bool(re.search('[tT]errasse', desc)),
-    }
-    o['url_photo_'] = [img.attrs['src'] for img in soup.select('div[class*="owl-item"] > div > a > img')]
-    o['mapCoordonneesLatitude'], o['mapCoordonneesLongitude'] = json.loads(soup.select('div[id="carte_mappy"]')[0].attrs['data-mappy'])['center']
-    if o['mapCoordonneesLatitude'] != '':
-        o['gdist'] = _gdist(o['mapCoordonneesLatitude'], o['mapCoordonneesLongitude'])
-    o['nbPieces'] = soup.select('ul[class*="item-tags"] > li > strong')[0].text.split(' ')[0]
-    return o
-    # TODO: [ ] nbChambres
-    # TODO: [ ] etage
-    # TODO: [ ] lift
-    # TODO: [ ] surfaceT
-    # TODO: [ ] available
-
-
 def _html():
     print("generate html")
     db = pd.read_hdf(fullpath_db)
@@ -211,17 +283,20 @@ def _html():
     gdist_url_ = {k: f'https://www.google.co.uk/maps/dir/{{}}/{v[1]}/data=!4m2!4m1!3e3' for k, v in cfg_dest.items()}
 
     html_ = []
-    for id_r, r in db.iterrows():
-        if r.captured < db.captured.max():
-            break
+    for id_r, r in db.loc[db.captured == now].iterrows():
+        price_str = f"{r.prix}E"
+        price_sqm_str = f"{float(r.prix.replace(',', '.')) / float(r.surfaceT.replace(',', '.')):.0f}E/m2"
+        if not pd.isna(r.price_old):
+            price_str = f"{r.price_old}->{price_str}"
+            price_sqm_str = f"{float(r.price_old.replace(',', '.')) / float(r.surfaceT.replace(',', '.')):.0f}->{price_sqm_str}"
         k_desc_ = [
             f"<a href='{r.urlAnnonce}' target='_blank'>link</a>",
-            f"{r.prix}E",
+            price_str,
             r.surface,
             f"{r.nbPieces}p",
             f"{r.nbChambres}ch",
             f"{r.etage}e" + (not r.lift) * "!",
-            f"{float(r.prix.replace(',', '.')) / float(r.surfaceT.replace(',', '.')):.0f}E/m2",
+            price_sqm_str,
         ]
         if not pd.isnull(r.available):
             k_desc_.append(f"dispo:{r.available:%d%b}")
@@ -293,7 +368,8 @@ def _notify(filename):
 
 
 if __name__ == '__main__':
-    _scrap()
+    _scrap_seloger()
+    _scrap_pap()
     filename_html = _html()
     _git()
     _email(filename_html)
