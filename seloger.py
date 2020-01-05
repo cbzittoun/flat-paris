@@ -52,7 +52,7 @@ def _gdist(latitude, longitude):
     destination_ = cfg_gdist['destination_']
     destinations = '|'.join(v[1] for v in destination_.values())
     key = cfg_gdist['api_key']
-    url = f'https://maps.googleapis.com/maps/api/distancematrix/json?mode=transit&departure_time=1581321600&units=metric&origins={origins}&destinations={destinations}&key={key}'
+    url = f'https://maps.googleapis.com/maps/api/distancematrix/json?mode=transit&departure_time=1579852800&units=metric&origins={origins}&destinations={destinations}&key={key}'
     response = requests.get(url)
     durations = [dest.get('duration', dict(value=np.nan))['value'] / 60 for dest in response.json()['rows'][0]['elements']]
     return dict(zip(destination_.keys(), durations))
