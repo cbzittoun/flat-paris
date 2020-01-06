@@ -62,6 +62,13 @@ def url_search_seloger(page):
     return 'https://www.seloger.com/list.htm?' + urllib.parse.urlencode({**cfg['search']['seloger'], 'LISTING-LISTpg': page})
 
 
+def _parse_search_seloger(p):
+    url = p.select('a[name=classified-link]')[0].attrs['href'].split('?')[0]
+    property_id = int(re.findall("/(\d+)[\./]", url)[0])
+    prix_new = p.select('div[class*=Price__Label]')[0].text.split(' ')[0].replace(' ', '')
+    return dict(property_id=property_id, url=url, prix_new=prix_new)
+
+
 def _parse_seloger(soup):
     info = dict(re.findall("Object\.defineProperty\( ConfigDetail, '(\w+)', {\n          value: [\"'](.*)[\"']", soup.text))
     url_photo_ = soup.select('div[class*="carrousel_slide"]')
@@ -99,11 +106,13 @@ def _parse_bellesdemeures(soup):
     o['ville'] = soup.select('span[class="js_locality"]')[0].text
     o['nomQuartier'] = ''
     plus = soup.select('ul[class="detailInfosList3Cols"]')[0].text
-    o['etage'] = re.search('étage (\d)+', plus)[1]
+    floor = re.search('étage (\d)+', plus)
+    if floor:
+        o['etage'] = floor[1]
     desc = soup.select('ul[class="detailInfosList3Cols"]')[1].text
     o['lift'] = bool(re.search('Ascenseur', desc))
     o['plus'] = {p: bool(re.search(p, desc)) for p in ['Balcon', 'Terrasse', 'Meublé']}
-    o['url_photo_'] = [x.attrs['data-src'] for x in soup.select('ul[class="carouselList"] > li')[:-1]]
+    o['url_photo_'] = [x.attrs.get('data-src', '') for x in soup.select('ul[class="carouselList"] > li')[:-1]]
     map = soup.select('div[id="detailMap"]')[0].attrs
     o['mapCoordonneesLatitude'], o['mapCoordonneesLongitude'] = map['data-lat'], map['data-lng']
     if o['mapCoordonneesLatitude'] != '':
@@ -120,52 +129,46 @@ def _scrap_seloger():
 
     with webdriver.Chrome(fullpath_chromedriver) as driver:
         page = 0
-        updated_all = False
-        while not updated_all:
+        while True:
             page += 1
-            if page > 5:
-                break
             soup = get_soup(driver, url_search_seloger(page))
 
-            url_property_ = soup.find_all('a', attrs={'name': 'classified-link'})
-            url_property_ = [x['href'].split('?')[0] for x in url_property_]
-            if not url_property_:
+            property_ = soup.select('div[class*=Card__ContentZone]')
+            if not property_:
                 break
+            property_ = pd.DataFrame([_parse_search_seloger(p) for p in property_])
+            l_parse = property_.merge(db, how='left', on='property_id').pipe(lambda d: d.prix_new != d.prix)
 
             print(f"page {page}")
+            for i_r, r in property_.loc[l_parse].iterrows():
+                print(f"{r.property_id}", end=" ")
 
-            updated_all = True
-            for url in url_property_:
-                property_id = int(re.findall("/(\d+)[\./]", url)[0])
-                print(f"{property_id}", end=" ")
-
-                already_in = (property_id == db.property_id).any()
+                already_in = (r.property_id == db.property_id).any()
                 if not db.empty and already_in:
                     print(f"exists", end=" => ")
                 else:
                     print(f"new   ", end=" => ")
-                    updated_all = False
 
-                soup = get_soup(driver, url)
+                soup = get_soup(driver, r.url)
 
-                if 'bellesdemeures.com' in url:
+                if 'bellesdemeures.com' in r.url:
                     print('bellesdemeures.com')
                     info = _parse_bellesdemeures(soup)
                 else:
                     info = _parse_seloger(soup)
-                info['property_id'] = property_id
+                info['property_id'] = r.property_id
 
                 row = pd.Series(info).to_frame().T
 
                 if already_in:
-                    price_old = db.loc[lambda x: x.property_id == property_id, 'prix'][0]
+                    price_old = db.loc[lambda x: x.property_id == r.property_id, 'prix'][0]
                     price_new = info['prix']
                     if price_new != price_old:
                         print(f"price move => update ({price_old} -> {price_new}E)")
                         updated_all = False
 
                         row['price_old'] = price_old
-                        db.loc[db.property_id == property_id] = row
+                        db.loc[db.property_id == r.property_id] = row
                     else:
                         print(f"price unch => skip")
                 else:
