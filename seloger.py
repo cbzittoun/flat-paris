@@ -63,7 +63,10 @@ def url_search_seloger(page):
 
 
 def _parse_search_seloger(p):
-    url = p.select('a[name=classified-link]')[0].attrs['href'].split('?')[0]
+    url = p.select('a[name=classified-link]')
+    if not url:
+        return
+    url = url[0].attrs['href'].split('?')[0]
     property_id = int(re.findall("/(\d+)[\./]", url)[0])
     prix_new = p.select('div[class*=Price__Label]')[0].text.split(' ')[0].replace(' ', '')
     return dict(property_id=property_id, url=url, prix_new=prix_new)
@@ -136,7 +139,8 @@ def _scrap_seloger():
             property_ = soup.select('div[class*=Card__ContentZone]')
             if not property_:
                 break
-            property_ = pd.DataFrame([_parse_search_seloger(p) for p in property_])
+            property_ = [_parse_search_seloger(p) for p in property_]
+            property_ = pd.DataFrame(p for p in property_ if p)
             l_parse = property_.merge(db, how='left', on='property_id').pipe(lambda d: d.prix_new != d.prix)
 
             print(f"page {page}")
