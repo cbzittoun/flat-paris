@@ -123,13 +123,8 @@ def _parse_bellesdemeures(soup):
     return o
 
 
-def _scrap_seloger():
+def _scrap_seloger(db):
     print("scrap seloger.com, bellesdemeures.com")
-    try:
-        db = pd.read_hdf(fullpath_db)
-    except FileNotFoundError:
-        db = pd.DataFrame()
-
     with webdriver.Chrome(fullpath_chromedriver) as driver:
         page = 0
         nb_loaded = 0
@@ -179,12 +174,11 @@ def _scrap_seloger():
                 else:
                     print(f"append")
                     db = pd.concat([db, row], axis=0, sort=True)
-    os.remove(fullpath_db)
-    db.to_hdf(fullpath_db, 'df')
+    return db
 
 
 def url_search_pap(page):
-    o = 'https://www.pap.fr/annonce/{projects}-{type}-{places}-g439-a-partir-du-{mb_room}-pieces-jusqu-a-{price}-euros-a-partir-de-{surface}-m2'
+    o = 'https://www.pap.fr/annonce/{projects}-{type}-{places}-g439-jusqu-a-{price}-euros-a-partir-de-{surface}-m2'
     o = o.format(**cfg['search']['pap'])
     if page > 1:
         o += f'-{page}'
@@ -221,13 +215,8 @@ def _parse_pap(soup):
     # TODO: [ ] available
 
 
-def _scrap_pap():
+def _scrap_pap(db):
     print("scrap pap.fr")
-    try:
-        db = pd.read_hdf(fullpath_db)
-    except FileNotFoundError:
-        db = pd.DataFrame()
-
     with webdriver.Chrome(fullpath_chromedriver) as driver:
         page = 0
         updated_all = False
@@ -277,13 +266,11 @@ def _scrap_pap():
                 else:
                     print(f"append")
                     db = pd.concat([db, row], axis=0, sort=True)
-    os.remove(fullpath_db)
-    db.to_hdf(fullpath_db, 'df')
+    return db
 
 
-def _html():
+def _html(db):
     print("generate html")
-    db = pd.read_hdf(fullpath_db)
     db = db.sort_values(['captured', 'property_id'], ascending=False)
 
     cfg_dest = cfg['gdist']['destination_']
@@ -375,10 +362,22 @@ def _notify(filename):
     notify.send(f'flat-hunt: new batch available ({filename})', f'{git_pages}/{filename}')
 
 
-if __name__ == '__main__':
-    _scrap_seloger()
-    _scrap_pap()
-    filename_html = _html()
+def main():
+    try:
+        db = pd.read_hdf(fullpath_db)
+    except FileNotFoundError:
+        db = pd.DataFrame()
+
+    db = _scrap_seloger(db)
+    db = _scrap_pap(db)
+    filename_html = _html(db)
     _git()
     _email(filename_html)
     # _notify(filename_html)
+
+    os.remove(fullpath_db)
+    db.to_hdf(fullpath_db, 'df')
+
+
+if __name__ == '__main__':
+    main()
