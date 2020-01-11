@@ -144,7 +144,7 @@ def _scrap_seloger():
             property_ = pd.DataFrame(p for p in property_ if p)
             l_parse = property_.merge(db, how='left', on='property_id').pipe(lambda d: d.prix_new != d.prix)
 
-            print(f"page {page}")
+            print(f"page {page} ({l_parse.sum()}/{len(property_)})")
             for i_r, r in property_.loc[l_parse].iterrows():
                 nb_loaded += 1
                 print(f"{r.property_id}", end=" ")
@@ -171,7 +171,6 @@ def _scrap_seloger():
                     price_new = info['prix']
                     if price_new != price_old:
                         print(f"price move => update ({price_old} -> {price_new}E)")
-                        updated_all = False
 
                         row['price_old'] = price_old
                         db.loc[db.property_id == r.property_id] = row
