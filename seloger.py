@@ -132,7 +132,8 @@ def _scrap_seloger():
 
     with webdriver.Chrome(fullpath_chromedriver) as driver:
         page = 0
-        while True:
+        nb_loaded = 0
+        while nb_loaded < 100:
             page += 1
             soup = get_soup(driver, url_search_seloger(page))
 
@@ -145,6 +146,7 @@ def _scrap_seloger():
 
             print(f"page {page}")
             for i_r, r in property_.loc[l_parse].iterrows():
+                nb_loaded += 1
                 print(f"{r.property_id}", end=" ")
 
                 already_in = (r.property_id == db.property_id).any()
